@@ -5,7 +5,7 @@
 
   Created 31 August 2018
   By Ivan Sy
-  Modified 3 September 2018
+  Modified 6 September 2018
   By Ivan Sy
 
   https://github.com/isyca/esp8266-fireplace-starter
@@ -22,6 +22,7 @@ ESP8266WebServer webServer(80);
 
 const char* ssid = "SSID";
 const char* password = "password";
+const char* hostnameStr = "fireplace";
 
 const int transmitPin = 0;
 const int externalLED = 2;
@@ -37,7 +38,6 @@ void turnFirePlaceON ()
   txSwitch.send("000001110011010111000101");
   txSwitch.setRepeatTransmit(1);
   txSwitch.send("000001110011010111");
-  lightStatusInt = 1;
 }
 
 void turnFirePlaceOFF ()
@@ -46,8 +46,6 @@ void turnFirePlaceOFF ()
   txSwitch.send("000001110011010100110101");
   txSwitch.setRepeatTransmit(1);
   txSwitch.send("00000");
-  lightStatusInt = 0;
-  heatStatusInt = 0;
 }
 
 void handleRoot() {
@@ -73,10 +71,9 @@ void blinkExternalLED(int count, int remainHigh) //count = 5 means approx 1 seco
 {
   while (count > 0)
   {
-    digitalWrite(externalLED, HIGH);
-    delay(100);
     digitalWrite(externalLED, LOW);
     delay(100);
+    digitalWrite(externalLED, HIGH);
     count = count -1;    
   }
 
@@ -90,16 +87,16 @@ void blinkExternalLED(int count, int remainHigh) //count = 5 means approx 1 seco
 
 void setup(void) {
   pinMode(externalLED, OUTPUT);
-  
+
+  WiFi.hostname(hostnameStr);
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
   txSwitch.enableTransmit(transmitPin);
-  txSwitch.setRepeatTransmit(2);
   txSwitch.setPulseLength(pulseLength);
 
   while (WiFi.status() != WL_CONNECTED) {    
-    blinkExternalLED(25,0);   // add a ~5 seconds delay
+    blinkExternalLED(25,0);   // ~5 seconds delay
   }
 
   webServer.on("/", handleRoot);
@@ -107,27 +104,45 @@ void setup(void) {
   webServer.on("/on", []() {
     blinkExternalLED(2,1);
     turnFirePlaceON();
+    lightStatusInt = 1;
     webServer.send(200, "application/json", "{\"result\": 1, \"msglevel\": \"INFO\", \"msg\": \"Fireplace on\"}");
   });
 
   webServer.on("/off", []() {
     blinkExternalLED(2,1);
     turnFirePlaceOFF();
+    lightStatusInt = 0;
+    heatStatusInt = 0;
     webServer.send(200, "application/json", "{\"result\": 1, \"msglevel\": \"INFO\", \"msg\": \"Fireplace off\"}");
   });
 
   webServer.on("/heaton", []() {       // off, turn on, then turn on again
     blinkExternalLED(2,1);
-    turnFirePlaceOFF();
-    turnFirePlaceON();
-    turnFirePlaceON();
-    heatStatusInt = 1;
-    webServer.send(200, "application/json", "{\"result\": 1, \"msglevel\": \"INFO\", \"msg\": \"Fireplace Heat on\"}");
+    if (lightStatusInt = 1)
+    {
+      turnFirePlaceON();
+      heatStatusInt = 1;
+      webServer.send(200, "application/json", "{\"result\": 1, \"msglevel\": \"INFO\", \"msg\": \"Fireplace Heat on\"}");
+    } else {
+      if (heatStatusInt = 1)
+      {
+        turnFirePlaceOFF();
+        delay(500);
+      }
+      turnFirePlaceON();
+      delay(300);
+      turnFirePlaceON();
+      heatStatusInt = 1;
+      lightStatusInt = 1;
+      webServer.send(200, "application/json", "{\"result\": 1, \"msglevel\": \"INFO\", \"msg\": \"Fireplace Heat on\"}");
+    }
   });
 
-  webServer.on("/heatoff", []() {
+  webServer.on("/heatoff", []() {       // completely turn it off (same as /off)
     blinkExternalLED(2,1);
     turnFirePlaceOFF();
+    lightStatusInt = 0;
+    heatStatusInt = 0;
     webServer.send(200, "application/json", "{\"result\": 1, \"msglevel\": \"INFO\", \"msg\": \"Fireplace Heat off\"}");
   });
 
@@ -148,7 +163,7 @@ void setup(void) {
 
   webServer.begin();
 
-  MDNS.begin("esp8266-fireplace-starter");
+  MDNS.begin(hostnameStr);
 }
 
 void loop(void) {
